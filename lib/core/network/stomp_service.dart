@@ -45,6 +45,8 @@ class StompService {
 
   // 当前房间ID
   String? _currentHouseId;
+  String? _currentRoomPassword;
+  bool _isRejoiningRoom = false;
 
   // 单例模式
   static final StompService _instance = StompService._internal();
@@ -95,6 +97,12 @@ class StompService {
         reconnectDelay: const Duration(
           milliseconds: StompServiceConfig.reconnectDelay,
         ),
+        heartbeatIncoming: const Duration(
+          milliseconds: StompServiceConfig.heartbeatInterval,
+        ),
+        heartbeatOutgoing: const Duration(
+          milliseconds: StompServiceConfig.heartbeatInterval,
+        ),
       ),
     );
 
@@ -120,11 +128,11 @@ class StompService {
   // ========== 房间相关 ==========
 
   /// 加入房间（订阅房间广播主题）
-  void joinRoom(String houseId) {
-    if (_currentHouseId == houseId) return;
+  void joinRoom(String houseId, {bool forceResubscribe = false}) {
+    if (!forceResubscribe && _currentHouseId == houseId) return;
 
     // 离开之前的房间
-    if (_currentHouseId != null) {
+    if (_currentHouseId != null && _currentHouseId != houseId) {
       leaveRoom();
     }
 
@@ -146,6 +154,8 @@ class StompService {
     _unsubscribe('/topic/$_currentHouseId');
     print('[STOMP] Left room: $_currentHouseId');
     _currentHouseId = null;
+    _currentRoomPassword = null;
+    _isRejoiningRoom = false;
   }
 
   // ========== 消息发送 ==========
@@ -177,6 +187,7 @@ class StompService {
     String? adminPwd,
     bool keepRoom = false,
   }) {
+    _currentRoomPassword = password;
     send(
       '/house/add',
       body: {
@@ -191,6 +202,7 @@ class StompService {
 
   /// 进入房间
   void enterRoom({required String houseId, String? password}) {
+    _currentRoomPassword = password;
     send(
       '/house/enter',
       body: {'houseId': houseId, if (password != null) 'password': password},
@@ -256,11 +268,27 @@ class StompService {
     send('/music/good/$musicId');
   }
 
+  /// 删除待播歌曲（非管理员仅可删自己点的）
+  void deleteMusic(String musicId) {
+    send('/music/delete', body: {'id': musicId});
+  }
+
+  /// 置顶歌曲（管理员）
+  void topMusic(String musicId) {
+    send('/music/top', body: {'id': musicId});
+  }
+
+  /// 清空播放列表（管理员）
+  void clearPickList() {
+    send('/music/clear');
+  }
+
   // ========== 内部方法 ==========
 
   void _onConnect(stomp.StompFrame frame) {
     _updateState(StompConnectionState.connected);
     print('[STOMP] Connected');
+    _subscriptions.clear();
 
     _subscribe('/user/queue/reply', (frame) {
       _handleMessage(frame, _currentHouseId ?? '');
@@ -268,11 +296,14 @@ class StompService {
 
     // 如果之前有房间，重新订阅
     if (_currentHouseId != null) {
-      joinRoom(_currentHouseId!);
+      joinRoom(_currentHouseId!, forceResubscribe: true);
+      _reEnterCurrentRoom();
     }
   }
 
   void _onDisconnect(stomp.StompFrame frame) {
+    _subscriptions.clear();
+    _isRejoiningRoom = false;
     if (_state != StompConnectionState.disconnected) {
       _updateState(StompConnectionState.reconnecting);
       print('[STOMP] Disconnected, will reconnect...');
@@ -280,11 +311,15 @@ class StompService {
   }
 
   void _onError(stomp.StompFrame frame) {
+    _subscriptions.clear();
+    _isRejoiningRoom = false;
     _updateState(StompConnectionState.error);
     print('[STOMP] Error: ${frame.body}');
   }
 
   void _onWebSocketError(dynamic error) {
+    _subscriptions.clear();
+    _isRejoiningRoom = false;
     _updateState(StompConnectionState.error);
     print('[STOMP] WebSocket Error: $error');
   }
@@ -328,6 +363,9 @@ class StompService {
 
       final data = jsonDecode(frame.body!) as Map<String, dynamic>;
       final message = Message.fromJson(data, houseId);
+      if (message.type == MessageType.enterHouse) {
+        _isRejoiningRoom = false;
+      }
 
       _messageController.add(message);
       print('[STOMP] Received ${message.type}: ${message.data}');
@@ -341,6 +379,22 @@ class StompService {
     disconnect();
     _messageController.close();
     _stateController.close();
+  }
+
+  void _reEnterCurrentRoom() {
+    if (_currentHouseId == null || _isRejoiningRoom || !isConnected) {
+      return;
+    }
+
+    _isRejoiningRoom = true;
+    send(
+      '/house/enter',
+      body: {
+        'houseId': _currentHouseId,
+        if (_currentRoomPassword != null) 'password': _currentRoomPassword,
+      },
+    );
+    print('[STOMP] Re-enter room after reconnect: $_currentHouseId');
   }
 }
 

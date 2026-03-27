@@ -555,17 +555,33 @@ class _VolumeControl extends ConsumerWidget {
   }
 }
 
-class _LyricPanel extends StatelessWidget {
+class _LyricPanel extends StatefulWidget {
   final String lyric;
   final int currentPosition;
 
   const _LyricPanel({required this.lyric, required this.currentPosition});
 
   @override
+  State<_LyricPanel> createState() => _LyricPanelState();
+}
+
+class _LyricPanelState extends State<_LyricPanel> {
+  static const double _lineExtent = 34;
+  final ScrollController _scrollController = ScrollController();
+  int _lastAutoIndex = -1;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lines = _parseLyric(lyric);
-    final activeIndex = _findActiveIndex(lines, currentPosition);
+    final lines = _parseLyric(widget.lyric);
+    final activeIndex = _findActiveIndex(lines, widget.currentPosition);
+    _scheduleAutoScroll(activeIndex, lines.isNotEmpty);
 
     return Container(
       width: double.infinity,
@@ -585,12 +601,14 @@ class _LyricPanel extends StatelessWidget {
               ),
             )
           : ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.symmetric(vertical: 42),
               itemCount: lines.length,
               itemBuilder: (context, index) {
                 final line = lines[index];
                 final isActive = index == activeIndex;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                return SizedBox(
+                  height: _lineExtent,
                   child: Text(
                     line.text,
                     textAlign: TextAlign.center,
@@ -611,6 +629,30 @@ class _LyricPanel extends StatelessWidget {
               },
             ),
     );
+  }
+
+  void _scheduleAutoScroll(int activeIndex, bool hasLines) {
+    if (!hasLines || activeIndex < 0 || activeIndex == _lastAutoIndex) {
+      return;
+    }
+    _lastAutoIndex = activeIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+      final viewport = _scrollController.position.viewportDimension;
+      final targetOffset =
+          activeIndex * _lineExtent - (viewport / 2 - _lineExtent / 2);
+      final clampedOffset = targetOffset.clamp(
+        0.0,
+        _scrollController.position.maxScrollExtent,
+      );
+      _scrollController.animateTo(
+        clampedOffset,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   static List<_LyricLine> _parseLyric(String lyric) {

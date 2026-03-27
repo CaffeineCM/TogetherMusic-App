@@ -403,6 +403,33 @@ class RoomNotifier extends StateNotifier<RoomState> {
     stompService.likeMusic(musicId);
   }
 
+  /// 删除待播歌曲（非管理员仅可删自己点的）
+  void deleteMusic(String musicId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.deleteMusic(musicId);
+  }
+
+  /// 置顶歌曲（管理员）
+  void topMusic(String musicId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.topMusic(musicId);
+  }
+
+  /// 清空播放列表（管理员）
+  void clearPickList() {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.clearPickList();
+  }
+
   /// 重新连接 WebSocket
   void reconnect() {
     stompService.reconnect();

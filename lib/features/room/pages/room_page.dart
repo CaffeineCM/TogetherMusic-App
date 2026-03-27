@@ -8,6 +8,7 @@ import '../widgets/chat_panel.dart';
 import '../widgets/online_users_panel.dart';
 import '../widgets/pick_panel.dart';
 import '../widgets/player_widget.dart';
+import '../widgets/queue_panel.dart';
 
 /// 房间主页面
 /// 包含播放器、点歌面板、聊天面板、在线用户列表
@@ -201,7 +202,7 @@ class _RoomPageState extends ConsumerState<RoomPage> {
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.queue_music),
-                  label: '点歌',
+                  label: '列表',
                 ),
                 NavigationDestination(icon: Icon(Icons.chat), label: '聊天'),
                 NavigationDestination(icon: Icon(Icons.people), label: '用户'),
@@ -215,16 +216,15 @@ class _RoomPageState extends ConsumerState<RoomPage> {
   Widget _buildWideLayout() {
     return Row(
       children: [
-        // 左侧：播放器 + 点歌入口
+        // 左侧：播放器 + 播放列表
         Expanded(
           flex: 2,
           child: Column(
             children: [
               const Expanded(flex: 3, child: PlayerWidget()),
               Expanded(
-                child: _PickLauncherCard(
-                  onOpen: () => _openPickDialog(context),
-                ),
+                flex: 2,
+                child: QueuePanel(onOpenPick: () => _openPickDialog(context)),
               ),
             ],
           ),
@@ -248,15 +248,14 @@ class _RoomPageState extends ConsumerState<RoomPage> {
   Widget _buildMediumLayout() {
     return Row(
       children: [
-        // 左侧：播放器 + 点歌入口
+        // 左侧：播放器 + 播放列表
         Expanded(
           child: Column(
             children: [
-              const Expanded(flex: 2, child: PlayerWidget()),
+              const Expanded(flex: 3, child: PlayerWidget()),
               Expanded(
-                child: _PickLauncherCard(
-                  onOpen: () => _openPickDialog(context),
-                ),
+                flex: 2,
+                child: QueuePanel(onOpenPick: () => _openPickDialog(context)),
               ),
             ],
           ),
@@ -272,25 +271,15 @@ class _RoomPageState extends ConsumerState<RoomPage> {
   Widget _buildNarrowLayout() {
     switch (_selectedIndex) {
       case 0:
-        return Column(
-          children: [
-            const Expanded(child: PlayerWidget()),
-            _PickLauncherCard(onOpen: () => _openPickDialog(context)),
-          ],
-        );
+        return const PlayerWidget();
       case 1:
-        return _PickLauncherCard(onOpen: () => _openPickDialog(context));
+        return QueuePanel(onOpenPick: () => _openPickDialog(context));
       case 2:
         return const ChatPanel();
       case 3:
         return const OnlineUsersPanel();
       default:
-        return Column(
-          children: [
-            const Expanded(child: PlayerWidget()),
-            _PickLauncherCard(onOpen: () => _openPickDialog(context)),
-          ],
-        );
+        return const PlayerWidget();
     }
   }
 
@@ -389,75 +378,6 @@ class _GlowOrb extends StatelessWidget {
               color.withValues(alpha: 0.0),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PickLauncherCard extends StatelessWidget {
-  final VoidCallback onOpen;
-
-  const _PickLauncherCard({required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2D2B35), Color(0xFF3A3744)],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8FB6FF).withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.queue_music_rounded),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '打开点歌台',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '搜索、歌单、排行榜统一放到弹窗里操作',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.68),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: const Text('点歌'),
-            ),
-          ],
         ),
       ),
     );
