@@ -39,7 +39,9 @@ class QueuePanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final pickList = ref.watch(roomProvider.select((state) => state.pickList));
+    final roomState = ref.watch(roomProvider);
+    final pickList = roomState.pickList;
+    final canManageQueue = roomState.currentRoom?.isManager ?? false;
     final roomNotifier = ref.read(roomProvider.notifier);
 
     return GlassPanel(
@@ -68,31 +70,32 @@ class QueuePanel extends ConsumerWidget {
                   label: const Text('点歌'),
                 ),
                 const SizedBox(width: 6),
-                PopupMenuButton<String>(
-                  tooltip: '更多操作',
-                  onSelected: (value) async {
-                    if (value == 'clear') {
-                      final confirmed = await _confirmAction(
-                        context: context,
-                        title: '清空播放列表',
-                        content: '该操作不可恢复，确认继续？',
-                        confirmText: '确认清空',
-                      );
-                      if (!confirmed) return;
-                      roomNotifier.clearPickList();
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem<String>(
-                      value: 'clear',
-                      child: Text('清空列表（管理员）'),
+                if (canManageQueue)
+                  PopupMenuButton<String>(
+                    tooltip: '更多操作',
+                    onSelected: (value) async {
+                      if (value == 'clear') {
+                        final confirmed = await _confirmAction(
+                          context: context,
+                          title: '清空播放列表',
+                          content: '该操作不可恢复，确认继续？',
+                          confirmText: '确认清空',
+                        );
+                        if (!confirmed) return;
+                        roomNotifier.clearPickList();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem<String>(
+                        value: 'clear',
+                        child: Text('清空列表'),
+                      ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.more_horiz_rounded),
                     ),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.more_horiz_rounded),
                   ),
-                ),
               ],
             ),
           ),
@@ -111,7 +114,7 @@ class QueuePanel extends ConsumerWidget {
                         isCurrent: isCurrent,
                         onLike: () => roomNotifier.likeMusic(music.id),
                         onDelete: () => roomNotifier.deleteMusic(music.id),
-                        onTop: isCurrent
+                        onTop: !canManageQueue || isCurrent
                             ? null
                             : () => roomNotifier.topMusic(music.id),
                         confirmAction:

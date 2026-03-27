@@ -184,7 +184,6 @@ class StompService {
     required String name,
     String? desc,
     String? password,
-    String? adminPwd,
     bool keepRoom = false,
   }) {
     _currentRoomPassword = password;
@@ -194,7 +193,6 @@ class StompService {
         'name': name,
         if (desc != null) 'desc': desc,
         if (password != null) 'password': password,
-        if (adminPwd != null) 'adminPwd': adminPwd,
         'keepRoom': keepRoom,
       },
     );
@@ -281,6 +279,30 @@ class StompService {
   /// 清空播放列表（管理员）
   void clearPickList() {
     send('/music/clear');
+  }
+
+  void grantAdmin(String sessionId) {
+    send('/user/admin/$sessionId');
+  }
+
+  void revokeAdmin(String sessionId) {
+    send('/user/member/$sessionId');
+  }
+
+  void kickUser(String sessionId) {
+    send('/user/kick/$sessionId');
+  }
+
+  void blackUser(String sessionId) {
+    send('/user/black/$sessionId');
+  }
+
+  void showBlackUsers() {
+    send('/user/blacklist');
+  }
+
+  void unblackUser(String targetId) {
+    send('/user/unblack/$targetId');
   }
 
   // ========== 内部方法 ==========

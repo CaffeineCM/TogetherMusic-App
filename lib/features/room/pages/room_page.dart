@@ -40,10 +40,6 @@ class _RoomPageState extends ConsumerState<RoomPage> {
 
   @override
   void dispose() {
-    final roomNotifier = _roomNotifier;
-    if (roomNotifier != null) {
-      roomNotifier.leaveRoom();
-    }
     super.dispose();
   }
 

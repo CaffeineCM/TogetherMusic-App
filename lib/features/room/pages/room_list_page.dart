@@ -218,7 +218,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     final nameController = TextEditingController();
     final descController = TextEditingController();
     final passwordController = TextEditingController();
-    final adminPwdController = TextEditingController();
     bool needPassword = false;
     bool keepRoom = false;
 
@@ -284,16 +283,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                         return null;
                       },
                     ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: adminPwdController,
-                    decoration: const InputDecoration(
-                      labelText: '管理员密码（可选）',
-                      hintText: '设置管理员密码',
-                      prefixIcon: Icon(Icons.admin_panel_settings),
-                    ),
-                    obscureText: true,
-                  ),
                   const SizedBox(height: 12),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -323,9 +312,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
                         ? null
                         : descController.text.trim(),
                     password: needPassword ? passwordController.text : null,
-                    adminPwd: adminPwdController.text.isEmpty
-                        ? null
-                        : adminPwdController.text,
                     keepRoom: keepRoom,
                   );
                 }
@@ -354,7 +340,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
     required String name,
     String? desc,
     String? password,
-    String? adminPwd,
     bool keepRoom = false,
   }) {
     ref
@@ -363,7 +348,6 @@ class _RoomListPageState extends ConsumerState<RoomListPage> {
           name: name,
           desc: desc,
           password: password,
-          adminPwd: adminPwd,
           keepRoom: keepRoom,
         );
   }

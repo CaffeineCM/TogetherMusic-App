@@ -15,6 +15,7 @@ class RoomState {
   final PlaybackSnapshot? playbackSnapshot;
   final List<Music> pickList;
   final List<OnlineUser> onlineUsers;
+  final List<String> blacklistedUsers;
   final List<RoomFeedItem> feedItems;
   final bool isLoading;
   final String? error;
@@ -27,6 +28,7 @@ class RoomState {
     this.playbackSnapshot,
     this.pickList = const [],
     this.onlineUsers = const [],
+    this.blacklistedUsers = const [],
     this.feedItems = const [],
     this.isLoading = false,
     this.error,
@@ -40,6 +42,7 @@ class RoomState {
     Object? playbackSnapshot = _playbackUnchanged,
     List<Music>? pickList,
     List<OnlineUser>? onlineUsers,
+    List<String>? blacklistedUsers,
     List<RoomFeedItem>? feedItems,
     bool? isLoading,
     String? error,
@@ -58,6 +61,7 @@ class RoomState {
           : playbackSnapshot as PlaybackSnapshot?,
       pickList: pickList ?? this.pickList,
       onlineUsers: onlineUsers ?? this.onlineUsers,
+      blacklistedUsers: blacklistedUsers ?? this.blacklistedUsers,
       feedItems: feedItems ?? this.feedItems,
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -129,7 +133,33 @@ class RoomNotifier extends StateNotifier<RoomState> {
       case MessageType.online:
         final users = message.onlineUsersData;
         if (users != null) {
-          state = state.copyWith(onlineUsers: users);
+          final currentRoom = state.currentRoom;
+          final currentSessionId = currentRoom?.currentSessionId;
+          OnlineUser? self;
+          if (currentSessionId != null && currentSessionId.isNotEmpty) {
+            for (final user in users) {
+              if (user.sessionId == currentSessionId) {
+                self = user;
+                break;
+              }
+            }
+          }
+          state = state.copyWith(
+            onlineUsers: users,
+            currentRoom: currentRoom == null
+                ? currentRoom
+                : currentRoom.copyWith(
+                    onlineCount: users.length,
+                    currentUserRole: self?.role ?? currentRoom.currentUserRole,
+                  ),
+          );
+        }
+        break;
+
+      case MessageType.blacklist:
+        final blacklist = message.blacklistData;
+        if (blacklist != null) {
+          state = state.copyWith(blacklistedUsers: blacklist);
         }
         break;
 
@@ -193,6 +223,20 @@ class RoomNotifier extends StateNotifier<RoomState> {
         }
         break;
 
+      case MessageType.kick:
+        final kickMessage = message.message ?? '你已被移出房间';
+        stompService.leaveRoom();
+        state = state.copyWith(
+          currentRoom: null,
+          currentPlaying: null,
+          playbackSnapshot: null,
+          pickList: [],
+          onlineUsers: [],
+          feedItems: [],
+          error: kickMessage,
+        );
+        break;
+
       case MessageType.chat:
         final chat = message.chatData;
         if (chat != null) {
@@ -250,7 +294,6 @@ class RoomNotifier extends StateNotifier<RoomState> {
     required String name,
     String? desc,
     String? password,
-    String? adminPwd,
     bool keepRoom = false,
   }) {
     if (!state.isConnected) {
@@ -264,7 +307,6 @@ class RoomNotifier extends StateNotifier<RoomState> {
       name: name,
       desc: desc,
       password: password,
-      adminPwd: adminPwd,
       keepRoom: keepRoom,
     );
   }
@@ -295,6 +337,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
       isLoading: false,
       pickList: [],
       onlineUsers: [],
+      blacklistedUsers: [],
       feedItems: [],
     );
 
@@ -318,6 +361,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
       playbackSnapshot: null,
       pickList: [],
       onlineUsers: [],
+      blacklistedUsers: [],
       feedItems: [],
     );
   }
@@ -428,6 +472,54 @@ class RoomNotifier extends StateNotifier<RoomState> {
       return;
     }
     stompService.clearPickList();
+  }
+
+  void grantAdmin(String sessionId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.grantAdmin(sessionId);
+  }
+
+  void revokeAdmin(String sessionId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.revokeAdmin(sessionId);
+  }
+
+  void kickUser(String sessionId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.kickUser(sessionId);
+  }
+
+  void blackUser(String sessionId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.blackUser(sessionId);
+  }
+
+  void showBlackUsers() {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.showBlackUsers();
+  }
+
+  void unblackUser(String targetId) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    stompService.unblackUser(targetId);
   }
 
   /// 重新连接 WebSocket

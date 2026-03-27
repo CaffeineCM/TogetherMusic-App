@@ -16,6 +16,7 @@ enum MessageType {
   enterHouse, // 进入房间结果
   searchHouse, // 房间列表
   authAdmin, // 管理员鉴权结果
+  blacklist, // 用户黑名单
   kick, // 被踢出通知
   unknown, // 未知类型
 }
@@ -137,6 +138,18 @@ class Message {
     return null;
   }
 
+  List<String>? get blacklistData {
+    if (type == MessageType.blacklist && data != null) {
+      try {
+        final list = data as List<dynamic>;
+        return list.map((item) => item.toString()).toList();
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   /// 获取通知文本（当 type 为 notice 时）
   String? get noticeText {
     if (type == MessageType.notice) {
@@ -177,6 +190,8 @@ class Message {
         return MessageType.searchHouse;
       case 'AUTH_ADMIN':
         return MessageType.authAdmin;
+      case 'BLACKLIST':
+        return MessageType.blacklist;
       case 'KICK':
         return MessageType.kick;
       default:
@@ -246,12 +261,22 @@ class OnlineUser {
     return OnlineUser(
       sessionId: json['sessionId'] as String? ?? '',
       displayName: json['displayName'] as String? ?? '未知用户',
-      role: json['role'] as String?,
+      role: json['role'] as String? ?? 'member',
       remoteAddress: json['remoteAddress'] as String?,
       registeredUserId: json['registeredUserId'] as int?,
     );
   }
 
-  bool get isAdmin => role == 'admin' || role == 'root';
+  bool get isOwner => role == 'owner';
+  bool get isAdmin => role == 'admin';
+  bool get isManager => isOwner || isAdmin;
   bool get isGuest => registeredUserId == null;
+
+  String get roleLabel {
+    if (isOwner) return '房主';
+    if (isAdmin) return '管理员';
+    return '成员';
+  }
+
+  String get accountLabel => isGuest ? '游客' : '已登录';
 }
