@@ -334,9 +334,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     final music = snapshot.music!;
     final duration = music.duration ?? state.duration ?? 0;
-    final updatedAt = snapshot.updatedAt > 0
-        ? DateTime.fromMillisecondsSinceEpoch(snapshot.updatedAt)
-        : DateTime.now();
     final effectivePosition = _resolveSnapshotPosition(snapshot, duration);
     final joinSync = fromRemote && state.currentMusic == null;
     final muted = joinSync ? true : state.isMuted;
@@ -354,8 +351,8 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       progress: duration > 0 ? (effectivePosition / duration).clamp(0.0, 1.0) : 0.0,
       duration: duration,
       isMuted: muted,
-      positionMs: snapshot.positionMs,
-      positionUpdatedAt: updatedAt,
+      positionMs: effectivePosition,
+      positionUpdatedAt: DateTime.now(),
       error: null,
     );
 

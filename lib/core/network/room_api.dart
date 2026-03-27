@@ -48,7 +48,7 @@ class RoomApi {
         fromData: (data) => PlaybackSnapshot.fromJson(data as Map<String, dynamic>),
       );
 
-      return response.isSuccess ? response.data as PlaybackSnapshot? : null;
+      return response.isSuccess ? response.data : null;
     } catch (e) {
       return null;
     }

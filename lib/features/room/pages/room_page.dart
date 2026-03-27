@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/models/playback_snapshot.dart';
 import '../providers/player_provider.dart';
 import '../providers/room_provider.dart';
 import '../widgets/chat_panel.dart';
