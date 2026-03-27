@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/message.dart';
 import '../../../core/models/music.dart';
+import '../../../core/models/playback_snapshot.dart';
 import '../../../core/models/room.dart';
 import '../../../core/network/room_api.dart';
 import '../../../core/network/stomp_service.dart';
@@ -11,6 +12,7 @@ class RoomState {
   final List<RoomSummary> roomList;
   final Room? currentRoom;
   final Music? currentPlaying;
+  final PlaybackSnapshot? playbackSnapshot;
   final List<Music> pickList;
   final List<OnlineUser> onlineUsers;
   final List<RoomFeedItem> feedItems;
@@ -22,6 +24,7 @@ class RoomState {
     this.roomList = const [],
     this.currentRoom,
     this.currentPlaying,
+    this.playbackSnapshot,
     this.pickList = const [],
     this.onlineUsers = const [],
     this.feedItems = const [],
@@ -34,6 +37,7 @@ class RoomState {
     List<RoomSummary>? roomList,
     Object? currentRoom = _roomUnchanged,
     Object? currentPlaying = _musicUnchanged,
+    Object? playbackSnapshot = _playbackUnchanged,
     List<Music>? pickList,
     List<OnlineUser>? onlineUsers,
     List<RoomFeedItem>? feedItems,
@@ -49,6 +53,9 @@ class RoomState {
       currentPlaying: identical(currentPlaying, _musicUnchanged)
           ? this.currentPlaying
           : currentPlaying as Music?,
+      playbackSnapshot: identical(playbackSnapshot, _playbackUnchanged)
+          ? this.playbackSnapshot
+          : playbackSnapshot as PlaybackSnapshot?,
       pickList: pickList ?? this.pickList,
       onlineUsers: onlineUsers ?? this.onlineUsers,
       feedItems: feedItems ?? this.feedItems,
@@ -70,6 +77,7 @@ class RoomState {
 
 const Object _roomUnchanged = Object();
 const Object _musicUnchanged = Object();
+const Object _playbackUnchanged = Object();
 
 /// 房间状态 Notifier
 class RoomNotifier extends StateNotifier<RoomState> {
@@ -200,6 +208,16 @@ class RoomNotifier extends StateNotifier<RoomState> {
         }
         break;
 
+      case MessageType.playback:
+        final playback = message.playbackData;
+        if (playback != null) {
+          state = state.copyWith(
+            playbackSnapshot: playback,
+            currentPlaying: playback.music,
+          );
+        }
+        break;
+
       case MessageType.volume:
         if (message.data != null) {
           _appendSystemFeed('房间音量已调整为 ${message.data}');
@@ -273,6 +291,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
     state = state.copyWith(
       currentRoom: room,
       currentPlaying: null,
+      playbackSnapshot: null,
       isLoading: false,
       pickList: [],
       onlineUsers: [],
@@ -285,6 +304,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
     // 获取房间用户列表
     stompService.getRoomUsers();
     unawaited(_syncCurrentPlaying(room.id));
+    unawaited(_syncPlaybackSnapshot(room.id));
   }
 
   /// 离开房间
@@ -295,6 +315,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
     state = state.copyWith(
       currentRoom: null,
       currentPlaying: null,
+      playbackSnapshot: null,
       pickList: [],
       onlineUsers: [],
       feedItems: [],
@@ -393,6 +414,17 @@ class RoomNotifier extends StateNotifier<RoomState> {
       return;
     }
     state = state.copyWith(currentPlaying: currentPlaying);
+  }
+
+  Future<void> _syncPlaybackSnapshot(String houseId) async {
+    final snapshot = await RoomApi.getPlaybackSnapshot(houseId);
+    if (state.currentHouseId != houseId) {
+      return;
+    }
+    state = state.copyWith(
+      playbackSnapshot: snapshot,
+      currentPlaying: snapshot?.music,
+    );
   }
 
   void _appendChatFeed(ChatMessage chat) {

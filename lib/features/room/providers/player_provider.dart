@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/message.dart';
 import '../../../core/models/music.dart';
+import '../../../core/models/playback_snapshot.dart';
 import '../../../core/network/stomp_service.dart';
 import 'player_audio_bridge.dart';
 
@@ -23,8 +24,9 @@ class PlayerState {
   final bool isMuted;
   final String? error;
 
-  // 播放进度计算相关
-  final DateTime? startTime;
+  // 播放进度锚点
+  final int positionMs;
+  final DateTime? positionUpdatedAt;
   final int? duration;
 
   const PlayerState({
@@ -34,7 +36,8 @@ class PlayerState {
     this.volume = 80,
     this.isMuted = true,
     this.error,
-    this.startTime,
+    this.positionMs = 0,
+    this.positionUpdatedAt,
     this.duration,
   });
 
@@ -45,7 +48,8 @@ class PlayerState {
     int? volume,
     bool? isMuted,
     String? error,
-    DateTime? startTime,
+    int? positionMs,
+    DateTime? positionUpdatedAt,
     int? duration,
   }) {
     return PlayerState(
@@ -55,16 +59,22 @@ class PlayerState {
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
       error: error,
-      startTime: startTime ?? this.startTime,
+      positionMs: positionMs ?? this.positionMs,
+      positionUpdatedAt: positionUpdatedAt ?? this.positionUpdatedAt,
       duration: duration ?? this.duration,
     );
   }
 
   /// 当前播放位置（毫秒）
   int get currentPosition {
-    if (startTime == null || duration == null) return 0;
-    final elapsed = DateTime.now().difference(startTime!).inMilliseconds;
-    return elapsed.clamp(0, duration!);
+    final total = duration;
+    final anchor = positionUpdatedAt;
+    if (total == null || total <= 0) return 0;
+    if (playbackState == PlaybackState.playing && anchor != null) {
+      final elapsed = DateTime.now().difference(anchor).inMilliseconds;
+      return (positionMs + elapsed).clamp(0, total);
+    }
+    return positionMs.clamp(0, total);
   }
 
   /// 格式化后的当前位置
@@ -126,14 +136,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       return;
     }
 
-    if (state.playbackState != PlaybackState.playing ||
-        state.startTime == null ||
-        state.duration == null) {
+    if (state.playbackState != PlaybackState.playing || state.duration == null) {
       return;
     }
 
-    final elapsed = DateTime.now().difference(state.startTime!).inMilliseconds;
-    final newProgress = (elapsed / state.duration!).clamp(0.0, 1.0);
+    final newProgress = (state.currentPosition / state.duration!).clamp(0.0, 1.0);
 
     state = state.copyWith(progress: newProgress);
 
@@ -154,6 +161,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         }
         break;
 
+      case MessageType.playback:
+        final playback = message.playbackData;
+        if (playback != null) {
+          unawaited(_applyPlaybackSnapshot(playback, fromRemote: true));
+        }
+        break;
+
       case MessageType.volume:
         // 音量变更
         if (message.data != null) {
@@ -171,64 +185,51 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   /// 新歌曲播放
   void _onNewMusic(Music music) {
-    _ensureAudioBridge();
-    final now = DateTime.now();
-    final pushTime = music.pushTime != null
-        ? DateTime.fromMillisecondsSinceEpoch(music.pushTime!)
-        : now;
-    final joinSync =
-        music.pushTime != null &&
-        now.difference(pushTime).inSeconds >= 3 &&
-        state.currentMusic == null;
-    final muted = joinSync ? true : state.isMuted;
-
-    // 计算当前进度（如果歌曲已经开始播放一段时间）
-    double initialProgress = 0.0;
-    if (music.duration != null && music.duration! > 0) {
-      final elapsed = now.difference(pushTime).inMilliseconds;
-      initialProgress = (elapsed / music.duration!).clamp(0.0, 1.0);
-    }
-
-    state = PlayerState(
-      currentMusic: music,
-      playbackState: PlaybackState.playing,
-      progress: initialProgress,
-      volume: state.volume,
-      isMuted: muted,
-      startTime: pushTime,
-      duration: music.duration,
+    final snapshot = PlaybackSnapshot(
+      music: music,
+      status: PlaybackSyncStatus.playing,
+      positionMs: 0,
+      updatedAt: music.pushTime ?? DateTime.now().millisecondsSinceEpoch,
+      serverTime: DateTime.now().millisecondsSinceEpoch,
     );
-
-    final url = music.url;
-    if (url != null && url.isNotEmpty) {
-      unawaited(
-        _audioBridge!.load(
-          // _audioBridge is ensured above.
-          url,
-          autoplay: true,
-          volume: (muted ? 0 : state.volume) / 100,
-        ),
-      );
-    } else {
-      handleError('当前歌曲没有可播放的音频地址');
-    }
+    unawaited(_applyPlaybackSnapshot(snapshot, fromRemote: true));
   }
 
   void syncSnapshot(Music music) {
     _onNewMusic(music);
   }
 
+  void syncPlayback(PlaybackSnapshot snapshot) {
+    unawaited(_applyPlaybackSnapshot(snapshot, fromRemote: true));
+  }
+
   /// 播放/暂停切换
   void togglePlayPause() {
     if (!state.canTogglePlay) return;
-    _ensureAudioBridge();
 
     if (state.playbackState == PlaybackState.playing) {
+      final currentPosition = state.currentPosition;
+      state = state.copyWith(
+        playbackState: PlaybackState.paused,
+        positionMs: currentPosition,
+        positionUpdatedAt: DateTime.now(),
+        progress: state.duration != null && state.duration! > 0
+            ? (currentPosition / state.duration!).clamp(0.0, 1.0)
+            : state.progress,
+        error: null,
+      );
+      _ensureAudioBridge();
       unawaited(_audioBridge!.pause());
-      state = state.copyWith(playbackState: PlaybackState.paused, error: null);
+      stompService.pausePlayback();
     } else {
+      state = state.copyWith(
+        playbackState: PlaybackState.playing,
+        positionUpdatedAt: DateTime.now(),
+        error: null,
+      );
+      _ensureAudioBridge();
       unawaited(_audioBridge!.play());
-      state = state.copyWith(playbackState: PlaybackState.playing, error: null);
+      stompService.resumePlayback();
     }
   }
 
@@ -256,13 +257,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final newProgress = progress.clamp(0.0, 1.0);
     final newPosition = (newProgress * state.duration!).toInt();
 
-    // 重新计算 startTime，使当前位置等于目标位置
-    final newStartTime = DateTime.now().subtract(
-      Duration(milliseconds: newPosition),
-    );
-
     unawaited(_audioBridge!.seekTo(Duration(milliseconds: newPosition)));
-    state = state.copyWith(progress: newProgress, startTime: newStartTime);
+    state = state.copyWith(
+      progress: newProgress,
+      positionMs: newPosition,
+      positionUpdatedAt: DateTime.now(),
+    );
+    stompService.seekPlayback(newPosition);
   }
 
   /// 播放完成
@@ -297,14 +298,102 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(
       progress: (position.inMilliseconds / totalDuration).clamp(0.0, 1.0),
       duration: totalDuration,
-      startTime: DateTime.now().subtract(position),
+      positionMs: position.inMilliseconds,
+      positionUpdatedAt: DateTime.now(),
       error: null,
     );
   }
 
   void _onAudioPlaybackChanged(bool isPlaying) {
     final nextState = isPlaying ? PlaybackState.playing : PlaybackState.paused;
-    state = state.copyWith(playbackState: nextState);
+    state = state.copyWith(
+      playbackState: nextState,
+      positionUpdatedAt: DateTime.now(),
+    );
+  }
+
+  Future<void> _applyPlaybackSnapshot(
+    PlaybackSnapshot snapshot, {
+    required bool fromRemote,
+  }) async {
+    _ensureAudioBridge();
+
+    if (snapshot.music == null) {
+      await _audioBridge!.pause();
+      state = state.copyWith(
+        currentMusic: null,
+        playbackState: PlaybackState.idle,
+        progress: 0.0,
+        positionMs: 0,
+        positionUpdatedAt: null,
+        duration: 0,
+        error: null,
+      );
+      return;
+    }
+
+    final music = snapshot.music!;
+    final duration = music.duration ?? state.duration ?? 0;
+    final updatedAt = snapshot.updatedAt > 0
+        ? DateTime.fromMillisecondsSinceEpoch(snapshot.updatedAt)
+        : DateTime.now();
+    final effectivePosition = _resolveSnapshotPosition(snapshot, duration);
+    final joinSync = fromRemote && state.currentMusic == null;
+    final muted = joinSync ? true : state.isMuted;
+    final isNewTrack =
+        state.currentMusic?.id != music.id ||
+        state.currentMusic?.pushTime != music.pushTime;
+
+    state = state.copyWith(
+      currentMusic: music,
+      playbackState: switch (snapshot.status) {
+        PlaybackSyncStatus.playing => PlaybackState.playing,
+        PlaybackSyncStatus.paused => PlaybackState.paused,
+        PlaybackSyncStatus.idle => PlaybackState.idle,
+      },
+      progress: duration > 0 ? (effectivePosition / duration).clamp(0.0, 1.0) : 0.0,
+      duration: duration,
+      isMuted: muted,
+      positionMs: snapshot.positionMs,
+      positionUpdatedAt: updatedAt,
+      error: null,
+    );
+
+    final url = music.url;
+    if (url == null || url.isEmpty) {
+      handleError('当前歌曲没有可播放的音频地址');
+      return;
+    }
+
+    if (isNewTrack) {
+      await _audioBridge!.load(
+        url,
+        autoplay: false,
+        volume: (muted ? 0 : state.volume) / 100,
+      );
+    } else {
+      _audioBridge!.setVolume((muted ? 0 : state.volume) / 100);
+    }
+
+    await _audioBridge!.seekTo(Duration(milliseconds: effectivePosition));
+    if (snapshot.status == PlaybackSyncStatus.playing) {
+      await _audioBridge!.play();
+    } else {
+      await _audioBridge!.pause();
+    }
+  }
+
+  int _resolveSnapshotPosition(PlaybackSnapshot snapshot, int duration) {
+    var position = snapshot.positionMs;
+    if (snapshot.status == PlaybackSyncStatus.playing &&
+        snapshot.updatedAt > 0 &&
+        snapshot.serverTime > 0) {
+      position += snapshot.serverTime - snapshot.updatedAt;
+    }
+    if (duration <= 0) {
+      return position.clamp(0, 1 << 30);
+    }
+    return position.clamp(0, duration);
   }
 
   @override

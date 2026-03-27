@@ -239,6 +239,18 @@ class StompService {
     send('/music/skip/vote');
   }
 
+  void pausePlayback() {
+    send('/music/playback/pause');
+  }
+
+  void resumePlayback() {
+    send('/music/playback/resume');
+  }
+
+  void seekPlayback(int positionMs) {
+    send('/music/playback/seek/$positionMs');
+  }
+
   /// 点赞歌曲
   void likeMusic(String musicId) {
     send('/music/good/$musicId');
