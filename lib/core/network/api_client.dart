@@ -6,8 +6,8 @@ import '../models/api_response.dart';
 
 /// API 客户端配置
 class ApiConfig {
-  /// 后端 API 基础 URL
-  static const String baseUrl = 'http://localhost:8080';
+  /// 后端 API 基础 URL（空字符串表示使用相对路径，由 Nginx 代理）
+  static const String baseUrl = '';
 
   /// API 版本前缀
   static const String apiPrefix = '/api/v1';

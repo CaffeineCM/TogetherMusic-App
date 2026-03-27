@@ -1,13 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:stomp_dart_client/stomp_dart_client.dart' as stomp;
 import '../models/message.dart';
 import 'api_client.dart';
 
 /// STOMP WebSocket 配置
 class StompServiceConfig {
-  /// WebSocket 服务器地址
-  static const String wsUrl = 'ws://localhost:8080/server/websocket';
+  /// WebSocket 服务器地址（自动根据当前页面 host 推导，支持 Nginx 代理）
+  static String get wsUrl {
+    if (kIsWeb) {
+      final base = Uri.base;
+      final scheme = base.scheme == 'https' ? 'wss' : 'ws';
+      final port = base.hasPort ? ':${base.port}' : '';
+      return '$scheme://${base.host}$port/server/websocket';
+    }
+    return 'ws://localhost:8080/server/websocket';
+  }
 
   /// SockJS 备用地址
   static const String sockJsUrl = 'http://localhost:8080/server';
