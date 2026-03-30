@@ -186,7 +186,7 @@ class _SourceSection extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: Colors.white87,
+                color: Color(0xDDFFFFFF),
               ),
             ),
             const SizedBox(width: 8),
