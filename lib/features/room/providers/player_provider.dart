@@ -337,17 +337,21 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final effectivePosition = _resolveSnapshotPosition(snapshot, duration);
     final joinSync = fromRemote && state.currentMusic == null;
     final muted = joinSync ? true : state.isMuted;
+    final previousMusic = state.currentMusic;
+    final previousPlaybackState = state.playbackState;
+    final previousPosition = state.currentPosition;
     final isNewTrack =
-        state.currentMusic?.id != music.id ||
-        state.currentMusic?.pushTime != music.pushTime;
+        previousMusic?.id != music.id ||
+        previousMusic?.pushTime != music.pushTime;
+    final targetPlaybackState = switch (snapshot.status) {
+      PlaybackSyncStatus.playing => PlaybackState.playing,
+      PlaybackSyncStatus.paused => PlaybackState.paused,
+      PlaybackSyncStatus.idle => PlaybackState.idle,
+    };
 
     state = state.copyWith(
       currentMusic: music,
-      playbackState: switch (snapshot.status) {
-        PlaybackSyncStatus.playing => PlaybackState.playing,
-        PlaybackSyncStatus.paused => PlaybackState.paused,
-        PlaybackSyncStatus.idle => PlaybackState.idle,
-      },
+      playbackState: targetPlaybackState,
       progress: duration > 0 ? (effectivePosition / duration).clamp(0.0, 1.0) : 0.0,
       duration: duration,
       isMuted: muted,
@@ -372,11 +376,25 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       _audioBridge!.setVolume((muted ? 0 : state.volume) / 100);
     }
 
-    await _audioBridge!.seekTo(Duration(milliseconds: effectivePosition));
-    if (snapshot.status == PlaybackSyncStatus.playing) {
-      await _audioBridge!.play();
-    } else {
-      await _audioBridge!.pause();
+    final positionDrift = (previousPosition - effectivePosition).abs();
+    final playbackStateChanged = previousPlaybackState != targetPlaybackState;
+    final shouldSeek = isNewTrack || positionDrift > 1500;
+    final shouldApplyPlaybackCommand =
+        isNewTrack ||
+        playbackStateChanged ||
+        targetPlaybackState == PlaybackState.paused ||
+        targetPlaybackState == PlaybackState.idle;
+
+    if (shouldSeek) {
+      await _audioBridge!.seekTo(Duration(milliseconds: effectivePosition));
+    }
+
+    if (shouldApplyPlaybackCommand) {
+      if (snapshot.status == PlaybackSyncStatus.playing) {
+        await _audioBridge!.play();
+      } else {
+        await _audioBridge!.pause();
+      }
     }
   }
 

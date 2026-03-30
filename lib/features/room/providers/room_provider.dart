@@ -330,15 +330,16 @@ class RoomNotifier extends StateNotifier<RoomState> {
 
   /// 内部方法：进入房间后的处理
   void _enterRoomInternal(Room room) {
+    final isSameRoom = state.currentHouseId == room.id;
     state = state.copyWith(
       currentRoom: room,
-      currentPlaying: null,
-      playbackSnapshot: null,
+      currentPlaying: isSameRoom ? state.currentPlaying : null,
+      playbackSnapshot: isSameRoom ? state.playbackSnapshot : null,
       isLoading: false,
-      pickList: [],
-      onlineUsers: [],
-      blacklistedUsers: [],
-      feedItems: [],
+      pickList: isSameRoom ? state.pickList : [],
+      onlineUsers: isSameRoom ? state.onlineUsers : [],
+      blacklistedUsers: isSameRoom ? state.blacklistedUsers : [],
+      feedItems: isSameRoom ? state.feedItems : [],
     );
 
     // 订阅房间消息
