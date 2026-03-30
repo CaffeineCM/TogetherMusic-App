@@ -1,13 +1,24 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_response.dart';
 
 /// API 客户端配置
 class ApiConfig {
-  /// 后端 API 基础 URL（空字符串表示使用相对路径，由 Nginx 代理）
-  static const String baseUrl = '';
+  /// 后端 API 基础 URL。
+  /// Web 端默认走相对路径，由 Nginx 代理；原生端默认直连本机后端。
+  static String get baseUrl {
+    const configured = String.fromEnvironment('API_BASE_URL');
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+    if (kIsWeb) {
+      return '';
+    }
+    return 'http://localhost:8080';
+  }
 
   /// API 版本前缀
   static const String apiPrefix = '/api/v1';

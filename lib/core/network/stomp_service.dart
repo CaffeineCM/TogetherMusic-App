@@ -7,8 +7,12 @@ import 'api_client.dart';
 
 /// STOMP WebSocket 配置
 class StompServiceConfig {
-  /// WebSocket 服务器地址（自动根据当前页面 host 推导，支持 Nginx 代理）
+  /// WebSocket 服务器地址（Web 端自动根据当前页面 host 推导，原生端支持 dart-define 覆盖）
   static String get wsUrl {
+    const configured = String.fromEnvironment('WS_URL');
+    if (configured.isNotEmpty) {
+      return configured;
+    }
     if (kIsWeb) {
       final base = Uri.base;
       final scheme = base.scheme == 'https' ? 'wss' : 'ws';
