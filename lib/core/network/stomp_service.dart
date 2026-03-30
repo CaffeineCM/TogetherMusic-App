@@ -329,6 +329,34 @@ class StompService {
     send('/user/unblack/$targetId');
   }
 
+  /// 获取房间 Token 授权状态
+  void getTokenStatus() {
+    send('/room/token-status');
+  }
+
+  /// 房主取消指定源的授权
+  void unlinkToken({required String source}) {
+    send('/room/unlink-token', body: {'source': source});
+  }
+
+  /// 设置房间音乐源（房主/管理员）
+  void setMusicSource({
+    required String houseId,
+    String? source,
+    bool useMyAccount = false,
+    int? targetUserId,
+  }) {
+    send(
+      '/room/set-music-source',
+      body: {
+        'houseId': houseId,
+        if (source != null) 'source': source,
+        'useMyAccount': useMyAccount,
+        if (targetUserId != null) 'targetUserId': targetUserId,
+      },
+    );
+  }
+
   // ========== 内部方法 ==========
 
   void _onConnect(stomp.StompFrame frame) {

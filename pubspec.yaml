@@ -35,6 +35,9 @@ dependencies:
   # 图片缓存
   cached_network_image: ^3.4.1
 
+  # 非 Web 音频播放
+  just_audio: ^0.10.4
+
   # 工具
   intl: ^0.19.0
 

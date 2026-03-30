@@ -89,13 +89,100 @@ class MusicAccountApi {
     }
     return response.data;
   }
+
+  static Future<KugouAccountStatus?> importKugouToken(String token) async {
+    final response = await _apiClient.post(
+      '/user/music-accounts/kugou/token/import',
+      data: {'token': token},
+      fromData: (data) =>
+          KugouAccountStatus.fromJson(data as Map<String, dynamic>),
+    );
+    if (!response.isSuccess) {
+      throw Exception(response.message ?? '酷狗授权失败');
+    }
+    return response.data;
+  }
+
+  static Future<KugouAccountStatus?> getKugouStatus() async {
+    final response = await _apiClient.get(
+      '/user/music-accounts/kugou/status',
+      fromData: (data) =>
+          KugouAccountStatus.fromJson(data as Map<String, dynamic>),
+    );
+    return response.isSuccess ? response.data : null;
+  }
+
+  static Future<KugouAccountStatus?> refreshKugouStatus() async {
+    final response = await _apiClient.post(
+      '/user/music-accounts/kugou/refresh',
+      fromData: (data) =>
+          KugouAccountStatus.fromJson(data as Map<String, dynamic>),
+    );
+    return response.isSuccess ? response.data : null;
+  }
+
+  static Future<KugouQrStartResult?> startKugouQrLogin() async {
+    final response = await _apiClient.post(
+      '/user/music-accounts/kugou/qr/start',
+      fromData: (data) =>
+          KugouQrStartResult.fromJson(data as Map<String, dynamic>),
+    );
+    return response.isSuccess ? response.data : null;
+  }
+
+  static Future<KugouQrCheckResult?> checkKugouQrLogin(String key) async {
+    final response = await _apiClient.get(
+      '/user/music-accounts/kugou/qr/check',
+      queryParameters: {'key': key},
+      fromData: (data) =>
+          KugouQrCheckResult.fromJson(data as Map<String, dynamic>),
+    );
+    return response.isSuccess ? response.data : null;
+  }
+
+  static Future<KugouCaptchaSendResult> sendKugouCaptcha({
+    required String phone,
+  }) async {
+    final response = await _apiClient.post(
+      '/user/music-accounts/kugou/captcha/send',
+      data: {'phone': phone},
+      fromData: (data) =>
+          KugouCaptchaSendResult.fromJson(data as Map<String, dynamic>),
+    );
+    if (!response.isSuccess || response.data == null) {
+      return KugouCaptchaSendResult(
+        success: false,
+        message: response.message ?? '验证码发送失败',
+      );
+    }
+    return response.data!;
+  }
+
+  static Future<KugouAccountStatus?> loginKugouByCaptcha({
+    required String phone,
+    required String captcha,
+  }) async {
+    final response = await _apiClient.post(
+      '/user/music-accounts/kugou/captcha/login',
+      data: {'phone': phone, 'captcha': captcha},
+      fromData: (data) =>
+          KugouAccountStatus.fromJson(data as Map<String, dynamic>),
+    );
+    if (!response.isSuccess) {
+      throw Exception(response.message ?? '酷狗授权失败');
+    }
+    return response.data;
+  }
 }
 
 class NeteaseCaptchaSendResult {
   final bool success;
   final String? message;
 
-  const NeteaseCaptchaSendResult({required this.success, required this.message});
+  const NeteaseCaptchaSendResult({
+    required this.success,
+    required this.message,
+  });
 }
 
 class NeteaseQrStartResult {
@@ -160,6 +247,83 @@ class NeteaseAccountStatus {
       refreshed: json['refreshed'] as bool? ?? false,
       nickname: json['nickname'] as String?,
       message: json['message'] as String?,
+    );
+  }
+}
+
+class KugouAccountStatus {
+  final bool valid;
+  final String? nickname;
+  final String? message;
+
+  const KugouAccountStatus({
+    required this.valid,
+    required this.nickname,
+    required this.message,
+  });
+
+  factory KugouAccountStatus.fromJson(Map<String, dynamic> json) {
+    return KugouAccountStatus(
+      valid: json['valid'] as bool? ?? false,
+      nickname: json['nickname'] as String?,
+      message: json['message'] as String?,
+    );
+  }
+}
+
+class KugouCaptchaSendResult {
+  final bool success;
+  final String? message;
+
+  const KugouCaptchaSendResult({required this.success, required this.message});
+
+  factory KugouCaptchaSendResult.fromJson(Map<String, dynamic> json) {
+    return KugouCaptchaSendResult(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String?,
+    );
+  }
+}
+
+class KugouQrStartResult {
+  final String key;
+  final String? qrUrl;
+  final String? qrImage;
+
+  const KugouQrStartResult({
+    required this.key,
+    required this.qrUrl,
+    required this.qrImage,
+  });
+
+  factory KugouQrStartResult.fromJson(Map<String, dynamic> json) {
+    return KugouQrStartResult(
+      key: json['key'] as String? ?? '',
+      qrUrl: json['qrUrl'] as String?,
+      qrImage: json['qrImage'] as String?,
+    );
+  }
+}
+
+class KugouQrCheckResult {
+  final int code;
+  final String? message;
+  final bool authorized;
+  final String? nickname;
+
+  const KugouQrCheckResult({
+    required this.code,
+    required this.message,
+    required this.authorized,
+    required this.nickname,
+  });
+
+  factory KugouQrCheckResult.fromJson(Map<String, dynamic> json) {
+    return KugouQrCheckResult(
+      code: json['code'] as int? ?? -1,
+      message: json['message'] as String?,
+      authorized: json['authorized'] as bool? ?? false,
+      nickname: json['nickname'] as String?,
     );
   }
 }

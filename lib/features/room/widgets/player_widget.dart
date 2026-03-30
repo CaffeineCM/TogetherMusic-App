@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/music.dart';
+import '../../../core/network/image_headers.dart';
 import '../providers/player_provider.dart';
 import 'glass_panel.dart';
 
@@ -319,7 +320,10 @@ class _AlbumArt extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         image: music?.pictureUrl != null
             ? DecorationImage(
-                image: NetworkImage(music!.pictureUrl!),
+                image: NetworkImage(
+                  music!.pictureUrl!,
+                  headers: musicImageHeaders,
+                ),
                 fit: BoxFit.cover,
               )
             : null,

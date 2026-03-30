@@ -18,6 +18,7 @@ enum MessageType {
   authAdmin, // 管理员鉴权结果
   blacklist, // 用户黑名单
   kick, // 被踢出通知
+  tokenStatus, // 房间 Token 授权状态
   unknown, // 未知类型
 }
 
@@ -138,11 +139,22 @@ class Message {
     return null;
   }
 
-  List<String>? get blacklistData {
-    if (type == MessageType.blacklist && data != null) {
+  List<String>? get blacklistData {    if (type == MessageType.blacklist && data != null) {
       try {
         final list = data as List<dynamic>;
         return list.map((item) => item.toString()).toList();
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// 获取 Token 授权状态（当 type 为 tokenStatus 时）
+  RoomTokenStatus? get tokenStatusData {
+    if (type == MessageType.tokenStatus && data != null) {
+      try {
+        return RoomTokenStatus.fromJson(data as Map<String, dynamic>);
       } catch (e) {
         return null;
       }
@@ -194,6 +206,8 @@ class Message {
         return MessageType.blacklist;
       case 'KICK':
         return MessageType.kick;
+      case 'TOKEN_STATUS':
+        return MessageType.tokenStatus;
       default:
         return MessageType.unknown;
     }
@@ -279,4 +293,60 @@ class OnlineUser {
   }
 
   String get accountLabel => isGuest ? '游客' : '已登录';
+}
+
+/// 单个音乐源的授权状态
+class SourceAuthStatus {
+  final bool creatorHasAuthorized;
+  final int? tokenHolderUserId;
+  final String? tokenHolderDisplayName;
+  final bool adminCanAuthorize;
+
+  const SourceAuthStatus({
+    required this.creatorHasAuthorized,
+    this.tokenHolderUserId,
+    this.tokenHolderDisplayName,
+    required this.adminCanAuthorize,
+  });
+
+  factory SourceAuthStatus.fromJson(Map<String, dynamic> json) {
+    return SourceAuthStatus(
+      creatorHasAuthorized: json['creatorHasAuthorized'] as bool? ?? false,
+      tokenHolderUserId: json['tokenHolderUserId'] as int?,
+      tokenHolderDisplayName: json['tokenHolderDisplayName'] as String?,
+      adminCanAuthorize: json['adminCanAuthorize'] as bool? ?? false,
+    );
+  }
+}
+
+/// 房间 Token 授权状态（每个音乐源独立）
+class RoomTokenStatus {
+  final String houseId;
+  final String? defaultMusicSource;
+  final int? creatorUserId;
+  final String? creatorDisplayName;
+  /// key: source code (wy / qq / kg)
+  final Map<String, SourceAuthStatus> sources;
+
+  const RoomTokenStatus({
+    required this.houseId,
+    this.defaultMusicSource,
+    this.creatorUserId,
+    this.creatorDisplayName,
+    required this.sources,
+  });
+
+  factory RoomTokenStatus.fromJson(Map<String, dynamic> json) {
+    final rawSources = json['sources'] as Map<String, dynamic>? ?? {};
+    final sources = rawSources.map(
+      (k, v) => MapEntry(k, SourceAuthStatus.fromJson(v as Map<String, dynamic>)),
+    );
+    return RoomTokenStatus(
+      houseId: json['houseId'] as String? ?? '',
+      defaultMusicSource: json['defaultMusicSource'] as String?,
+      creatorUserId: json['creatorUserId'] as int?,
+      creatorDisplayName: json['creatorDisplayName'] as String?,
+      sources: sources,
+    );
+  }
 }

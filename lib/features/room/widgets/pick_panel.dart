@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/music.dart';
 import '../../../core/models/music_discovery.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../core/network/image_headers.dart';
 import '../../../core/network/music_api.dart';
 import '../providers/room_provider.dart';
 import 'glass_panel.dart';
@@ -10,7 +12,9 @@ import 'glass_panel.dart';
 /// 点歌面板
 /// 采用二级浏览结构：先浏览歌单/榜单，再进入详情页添加歌曲。
 class PickPanel extends ConsumerStatefulWidget {
-  const PickPanel({super.key});
+  final String selectedSource;
+
+  const PickPanel({super.key, required this.selectedSource});
 
   @override
   ConsumerState<PickPanel> createState() => _PickPanelState();
@@ -20,7 +24,6 @@ class _PickPanelState extends ConsumerState<PickPanel> {
   final _searchController = TextEditingController();
 
   String? _boundHouseId;
-  String _selectedSource = 'wy';
   List<Music> _searchResults = [];
   bool _isSearching = false;
 
@@ -40,6 +43,25 @@ class _PickPanelState extends ConsumerState<PickPanel> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant PickPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedSource != widget.selectedSource) {
+      setState(() {
+        _searchResults = [];
+        _recommendedPlaylists = [];
+        _hostPlaylists = [];
+        _toplists = [];
+        _selectedTracks = [];
+        _selectedCollection = null;
+      });
+      final houseId = _boundHouseId;
+      if (houseId != null) {
+        _loadDiscovery(houseId);
+      }
+    }
   }
 
   void _bindHouse(String? houseId) {
@@ -62,13 +84,23 @@ class _PickPanelState extends ConsumerState<PickPanel> {
     setState(() => _isDiscoveryLoading = true);
 
     try {
-      final context = await MusicApi.getDiscoveryContext(houseId: houseId);
+      final context = await MusicApi.getDiscoveryContext(
+        houseId: houseId,
+        source: widget.selectedSource,
+      );
       final recommended = await MusicApi.getRecommendedPlaylists(
         houseId: houseId,
+        source: widget.selectedSource,
       );
-      final toplists = await MusicApi.getToplists(houseId: houseId);
+      final toplists = await MusicApi.getToplists(
+        houseId: houseId,
+        source: widget.selectedSource,
+      );
       final hostPlaylists = context.canViewHostPlaylists
-          ? await MusicApi.getHostPlaylists(houseId: houseId)
+          ? await MusicApi.getHostPlaylists(
+              houseId: houseId,
+              source: widget.selectedSource,
+            )
           : <MusicPlaylistSummary>[];
 
       if (!mounted || _boundHouseId != houseId) {
@@ -103,7 +135,7 @@ class _PickPanelState extends ConsumerState<PickPanel> {
       final results = await MusicApi.search(
         houseId: houseId,
         keyword: keyword,
-        source: _selectedSource,
+        source: widget.selectedSource,
       );
       if (!mounted) return;
       setState(() => _searchResults = results);
@@ -133,6 +165,7 @@ class _PickPanelState extends ConsumerState<PickPanel> {
       final tracks = await MusicApi.getPlaylistDetail(
         houseId: houseId,
         playlistId: collection.id,
+        source: collection.source,
       );
       if (!mounted || _selectedCollection?.id != collection.id) {
         return;
@@ -309,22 +342,21 @@ class _PickPanelState extends ConsumerState<PickPanel> {
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [
-                  DropdownButton<String>(
-                    value: _selectedSource,
-                    isDense: true,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'wy', child: Text('网易云')),
-                      DropdownMenuItem(value: 'qq', child: Text('QQ音乐')),
-                      DropdownMenuItem(value: 'kg', child: Text('酷狗')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedSource = value);
-                      }
-                    },
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
+                    child: Text(
+                      _sourceName(widget.selectedSource),
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
                       controller: _searchController,
@@ -393,7 +425,7 @@ class _PickPanelState extends ConsumerState<PickPanel> {
                             id: playlist.id,
                             title: playlist.name,
                             subtitle: playlist.creatorName,
-                            meta: '${playlist.trackCount ?? 0} 首',
+                            meta: _playlistMeta(playlist),
                             description: playlist.description,
                             imageUrl: playlist.coverUrl,
                             source: playlist.source,
@@ -410,7 +442,7 @@ class _PickPanelState extends ConsumerState<PickPanel> {
                           id: playlist.id,
                           title: playlist.name,
                           subtitle: playlist.creatorName,
-                          meta: '${playlist.trackCount ?? 0} 首',
+                          meta: _playlistMeta(playlist),
                           description: playlist.description,
                           imageUrl: playlist.coverUrl,
                           source: playlist.source,
@@ -472,6 +504,23 @@ class _PickPanelState extends ConsumerState<PickPanel> {
             ),
     );
   }
+}
+
+String _sourceName(String code) {
+  for (final item in AppConstants.musicSources) {
+    if (item['code'] == code) {
+      return item['name'] ?? code;
+    }
+  }
+  return code;
+}
+
+String _playlistMeta(MusicPlaylistSummary playlist) {
+  final trackCount = playlist.trackCount;
+  if (trackCount != null && trackCount > 0) {
+    return '$trackCount 首';
+  }
+  return '歌单';
 }
 
 enum _CollectionKind { playlist, toplist }
@@ -653,6 +702,7 @@ class _CollectionCard extends StatelessWidget {
                       )
                     : Image.network(
                         item.imageUrl!,
+                        headers: musicImageHeaders,
                         width: 88,
                         height: 88,
                         fit: BoxFit.cover,
@@ -795,6 +845,7 @@ class _CollectionDetailView extends StatelessWidget {
                         )
                       : Image.network(
                           collection.imageUrl!,
+                          headers: musicImageHeaders,
                           width: 112,
                           height: 112,
                           fit: BoxFit.cover,
@@ -905,6 +956,7 @@ class _CollectionDetailView extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(10),
                                 child: Image.network(
                                   music.pictureUrl!,
+                                  headers: musicImageHeaders,
                                   width: 48,
                                   height: 48,
                                   fit: BoxFit.cover,
@@ -1007,6 +1059,7 @@ class _SongBrowserPanel extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(10),
                                 child: Image.network(
                                   music.pictureUrl!,
+                                  headers: musicImageHeaders,
                                   width: 40,
                                   height: 40,
                                   fit: BoxFit.cover,
@@ -1105,6 +1158,7 @@ class _PickList extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(10),
                                     child: Image.network(
                                       music.pictureUrl!,
+                                      headers: musicImageHeaders,
                                       width: 40,
                                       height: 40,
                                       fit: BoxFit.cover,

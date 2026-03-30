@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/music.dart';
+import '../../../core/network/image_headers.dart';
 import '../providers/room_provider.dart';
 import 'glass_panel.dart';
 
@@ -332,6 +333,7 @@ class _QueueTile extends StatelessWidget {
 
     return Image.network(
       music.pictureUrl!,
+      headers: musicImageHeaders,
       width: 38,
       height: 38,
       fit: BoxFit.cover,

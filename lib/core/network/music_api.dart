@@ -38,10 +38,11 @@ class MusicApi {
 
   static Future<MusicDiscoveryContext> getDiscoveryContext({
     required String houseId,
+    String source = 'wy',
   }) async {
     final response = await apiClient.get(
       '/music/discovery/context',
-      queryParameters: {'houseId': houseId},
+      queryParameters: {'houseId': houseId, 'source': source},
       fromData: (data) =>
           MusicDiscoveryContext.fromJson(data as Map<String, dynamic>),
     );
@@ -56,10 +57,11 @@ class MusicApi {
 
   static Future<List<MusicPlaylistSummary>> getRecommendedPlaylists({
     required String houseId,
+    String source = 'wy',
   }) async {
     final response = await apiClient.get(
       '/music/playlists/recommended',
-      queryParameters: {'houseId': houseId},
+      queryParameters: {'houseId': houseId, 'source': source},
       fromData: (data) => (data as List<dynamic>)
           .map(
             (item) =>
@@ -75,10 +77,11 @@ class MusicApi {
 
   static Future<List<MusicPlaylistSummary>> getHostPlaylists({
     required String houseId,
+    String source = 'wy',
   }) async {
     final response = await apiClient.get(
       '/music/playlists/host-favorites',
-      queryParameters: {'houseId': houseId},
+      queryParameters: {'houseId': houseId, 'source': source},
       fromData: (data) => (data as List<dynamic>)
           .map(
             (item) =>
@@ -95,10 +98,11 @@ class MusicApi {
   static Future<List<Music>> getPlaylistDetail({
     required String houseId,
     required String playlistId,
+    String source = 'wy',
   }) async {
     final response = await apiClient.get(
       '/music/playlists/$playlistId',
-      queryParameters: {'houseId': houseId},
+      queryParameters: {'houseId': houseId, 'source': source},
       fromData: (data) => (data as List<dynamic>)
           .map((item) => Music.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -111,10 +115,11 @@ class MusicApi {
 
   static Future<List<MusicToplistSummary>> getToplists({
     required String houseId,
+    String source = 'wy',
   }) async {
     final response = await apiClient.get(
       '/music/toplists',
-      queryParameters: {'houseId': houseId},
+      queryParameters: {'houseId': houseId, 'source': source},
       fromData: (data) => (data as List<dynamic>)
           .map(
             (item) =>

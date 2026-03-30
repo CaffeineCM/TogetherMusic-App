@@ -22,15 +22,21 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _nicknameController = TextEditingController();
   bool _isEditing = false;
   NeteaseAccountStatus? _neteaseStatus;
+  KugouAccountStatus? _kugouStatus;
   bool _isLoadingNeteaseStatus = false;
   bool _isRefreshingNetease = false;
+  bool _isLoadingKugouStatus = false;
+  bool _isRefreshingKugou = false;
 
   @override
   void initState() {
     super.initState();
     final user = ref.read(authProvider).user;
     _nicknameController.text = user?.nickname ?? user?.username ?? '';
-    Future.microtask(_loadNeteaseStatus);
+    Future.microtask(() async {
+      await _loadNeteaseStatus();
+      await _loadKugouStatus();
+    });
   }
 
   @override
@@ -108,6 +114,37 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } finally {
       if (mounted) {
         setState(() => _isRefreshingNetease = false);
+      }
+    }
+  }
+
+  Future<void> _loadKugouStatus() async {
+    setState(() => _isLoadingKugouStatus = true);
+    try {
+      final status = await MusicAccountApi.getKugouStatus();
+      if (!mounted) return;
+      setState(() => _kugouStatus = status);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingKugouStatus = false);
+      }
+    }
+  }
+
+  Future<void> _refreshKugouStatus() async {
+    setState(() => _isRefreshingKugou = true);
+    try {
+      final status = await MusicAccountApi.refreshKugouStatus();
+      if (!mounted) return;
+      setState(() => _kugouStatus = status);
+      if (status != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(status.message ?? '刷新完成')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingKugou = false);
       }
     }
   }
@@ -318,6 +355,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       builder: (context) {
         final status = _neteaseStatus;
         final isBound = status?.valid ?? false;
+        final kugouStatus = _kugouStatus;
+        final isKugouBound = kugouStatus?.valid ?? false;
 
         return AlertDialog(
           title: const Text('音乐账号绑定'),
@@ -363,9 +402,30 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 const SizedBox(height: 8),
                 _buildMusicAccountItem(
                   name: '酷狗音乐',
-                  subtitle: '暂未接入',
-                  isBound: false,
-                  trailing: const Text('待开发'),
+                  subtitle: _isLoadingKugouStatus
+                      ? '正在读取授权状态...'
+                      : isKugouBound
+                      ? '已授权${kugouStatus?.nickname != null ? ' · ${kugouStatus!.nickname}' : ''}'
+                      : (kugouStatus?.message ?? '未授权'),
+                  isBound: isKugouBound,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: _isRefreshingKugou
+                            ? null
+                            : _refreshKugouStatus,
+                        child: Text(_isRefreshingKugou ? '刷新中' : '刷新状态'),
+                      ),
+                      FilledButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _showKugouAuthMethodDialog();
+                        },
+                        child: Text(isKugouBound ? '重新授权' : '去授权'),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -421,6 +481,48 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       return;
     }
     await _showNeteasePhoneDialog();
+  }
+
+  Future<void> _showKugouAuthMethodDialog() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.qr_code_2),
+              title: const Text('扫码授权'),
+              subtitle: const Text('使用酷狗二维码登录，完成后自动绑定'),
+              onTap: () => Navigator.of(context).pop('qr'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sms_outlined),
+              title: const Text('手机验证码登录'),
+              subtitle: const Text('通过手机号和验证码完成酷狗授权'),
+              onTap: () => Navigator.of(context).pop('phone'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.key_rounded),
+              title: const Text('导入凭证'),
+              subtitle: const Text('手动粘贴酷狗 token 或服务凭证'),
+              onTap: () => Navigator.of(context).pop('token'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+    if (action == 'qr') {
+      await _showKugouQrDialog();
+      return;
+    }
+    if (action == 'phone') {
+      await _showKugouPhoneDialog();
+      return;
+    }
+    await _showKugouTokenDialog();
   }
 
   Future<void> _showNeteaseQrDialog() async {
@@ -529,6 +631,122 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     pollTimer?.cancel();
   }
 
+  Future<void> _showKugouQrDialog() async {
+    final startResult = await MusicAccountApi.startKugouQrLogin();
+    if (!mounted) return;
+
+    final hasQrData =
+        startResult != null &&
+        ((startResult.key.isNotEmpty) ||
+            (startResult.qrUrl?.isNotEmpty ?? false) ||
+            (startResult.qrImage?.isNotEmpty ?? false));
+
+    if (!hasQrData) {
+      await _showAuthHintDialog(
+        title: '酷狗扫码暂不可用',
+        message:
+            '后端已响应，但没有返回二维码数据。请先检查酷狗 Node API 是否实际支持 /login/qr 接口，或先改用“手机验证码登录 / 导入凭证”。',
+      );
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    Timer? pollTimer;
+    var lastMessage = '请使用酷狗 App 扫码授权';
+    final qrBytes = _decodeQrImage(startResult.qrImage);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            pollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) async {
+              final result = await MusicAccountApi.checkKugouQrLogin(
+                startResult.key,
+              );
+              if (!mounted || !context.mounted || result == null) return;
+
+              if (result.message?.isNotEmpty == true) {
+                setState(() => lastMessage = result.message!);
+              }
+
+              if (result.authorized) {
+                pollTimer?.cancel();
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+                await _loadKugouStatus();
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result.nickname?.isNotEmpty == true
+                          ? '酷狗授权成功：${result.nickname}'
+                          : '酷狗授权成功',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              if (result.code == 0) {
+                pollTimer?.cancel();
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('二维码已过期，请重新获取')),
+                );
+              }
+            });
+
+            return AlertDialog(
+              title: const Text('酷狗扫码授权'),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (qrBytes != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Image.memory(
+                          qrBytes,
+                          width: 220,
+                          height: 220,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    else
+                      SelectableText(startResult.qrUrl ?? ''),
+                    const SizedBox(height: 16),
+                    Text(
+                      lastMessage,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    pollTimer?.cancel();
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    pollTimer?.cancel();
+  }
+
   Future<void> _showNeteasePhoneDialog() async {
     final phoneController = TextEditingController();
     final captchaController = TextEditingController();
@@ -588,9 +806,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(
-                      result.success
-                          ? '验证码已发送'
-                          : (result.message ?? '验证码发送失败'),
+                      result.success ? '验证码已发送' : (result.message ?? '验证码发送失败'),
                     ),
                   ),
                 );
@@ -762,6 +978,208 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     ctcodeController.dispose();
   }
 
+  Future<void> _showKugouPhoneDialog() async {
+    final phoneController = TextEditingController();
+    final captchaController = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    var isSending = false;
+    var isSubmitting = false;
+    var cooldownSeconds = 0;
+    String? errorText;
+    Timer? cooldownTimer;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            var dialogClosed = false;
+
+            Future<void> sendCaptcha() async {
+              final phone = phoneController.text.trim();
+              if (phone.isEmpty) {
+                setState(() => errorText = '请输入手机号');
+                return;
+              }
+
+              setState(() {
+                isSending = true;
+                errorText = null;
+              });
+              try {
+                final result = await MusicAccountApi.sendKugouCaptcha(
+                  phone: phone,
+                );
+                if (!context.mounted) return;
+                if (result.success) {
+                  cooldownTimer?.cancel();
+                  cooldownSeconds = 60;
+                  cooldownTimer = Timer.periodic(const Duration(seconds: 1), (
+                    timer,
+                  ) {
+                    if (!context.mounted) {
+                      timer.cancel();
+                      return;
+                    }
+                    if (cooldownSeconds <= 1) {
+                      timer.cancel();
+                      setState(() => cooldownSeconds = 0);
+                    } else {
+                      setState(() => cooldownSeconds -= 1);
+                    }
+                  });
+                }
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result.success ? '验证码已发送' : (result.message ?? '验证码发送失败'),
+                    ),
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                setState(() => errorText = _displayError(e, '验证码发送失败'));
+                messenger.showSnackBar(
+                  SnackBar(content: Text(_displayError(e, '验证码发送失败'))),
+                );
+              } finally {
+                if (context.mounted) {
+                  setState(() => isSending = false);
+                }
+              }
+            }
+
+            Future<void> submitLogin() async {
+              final phone = phoneController.text.trim();
+              final captcha = captchaController.text.trim();
+              if (phone.isEmpty || captcha.isEmpty) {
+                setState(() => errorText = '请输入手机号和验证码');
+                return;
+              }
+
+              setState(() {
+                isSubmitting = true;
+                errorText = null;
+              });
+              try {
+                final status = await MusicAccountApi.loginKugouByCaptcha(
+                  phone: phone,
+                  captcha: captcha,
+                );
+                if (!context.mounted) return;
+                if (status?.valid == true) {
+                  cooldownTimer?.cancel();
+                  if (mounted) {
+                    this.setState(() => _kugouStatus = status);
+                  }
+                  dialogClosed = true;
+                  Navigator.of(context).pop();
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        status?.nickname?.isNotEmpty == true
+                            ? '酷狗授权成功：${status!.nickname}'
+                            : '酷狗授权成功',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                messenger.showSnackBar(
+                  SnackBar(content: Text(status?.message ?? '酷狗授权失败')),
+                );
+                setState(() => errorText = status?.message ?? '酷狗授权失败');
+              } catch (e) {
+                if (!context.mounted) return;
+                setState(() => errorText = _displayError(e, '酷狗授权失败'));
+                messenger.showSnackBar(
+                  SnackBar(content: Text(_displayError(e, '酷狗授权失败'))),
+                );
+              } finally {
+                if (context.mounted && !dialogClosed) {
+                  setState(() => isSubmitting = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('酷狗手机验证码登录'),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(
+                        labelText: '手机号',
+                        hintText: '请输入酷狗绑定手机号',
+                      ),
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: captchaController,
+                            decoration: const InputDecoration(
+                              labelText: '验证码',
+                              hintText: '请输入短信验证码',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton.tonal(
+                          onPressed: isSending || cooldownSeconds > 0
+                              ? null
+                              : sendCaptcha,
+                          child: Text(
+                            isSending
+                                ? '发送中'
+                                : cooldownSeconds > 0
+                                ? '${cooldownSeconds}s'
+                                : '发送验证码',
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          errorText!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting ? null : submitLogin,
+                  child: Text(isSubmitting ? '登录中' : '确认登录'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    cooldownTimer?.cancel();
+  }
+
   Future<void> _showNeteaseCookieDialog() async {
     final cookieController = TextEditingController();
     final uidController = TextEditingController();
@@ -830,9 +1248,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '请粘贴从网易云网页登录态中复制的完整 Cookie 字符串。',
-                    ),
+                    const Text('请粘贴从网易云网页登录态中复制的完整 Cookie 字符串。'),
                     const SizedBox(height: 12),
                     TextField(
                       controller: uidController,
@@ -885,6 +1301,111 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     uidController.dispose();
   }
 
+  Future<void> _showKugouTokenDialog() async {
+    final tokenController = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    var isSubmitting = false;
+    String? errorText;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            var dialogClosed = false;
+
+            Future<void> submitToken() async {
+              final token = tokenController.text.trim();
+              if (token.isEmpty) {
+                setState(() => errorText = '请输入酷狗凭证');
+                return;
+              }
+
+              setState(() {
+                isSubmitting = true;
+                errorText = null;
+              });
+              try {
+                final status = await MusicAccountApi.importKugouToken(token);
+                if (!context.mounted) return;
+                if (status?.valid == true) {
+                  if (mounted) {
+                    this.setState(() => _kugouStatus = status);
+                  }
+                  dialogClosed = true;
+                  Navigator.of(context).pop();
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        status?.nickname?.isNotEmpty == true
+                            ? '酷狗授权成功：${status!.nickname}'
+                            : '酷狗授权成功',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                setState(() => errorText = status?.message ?? '酷狗授权失败');
+              } catch (e) {
+                if (!context.mounted) return;
+                setState(() => errorText = _displayError(e, '酷狗授权失败'));
+              } finally {
+                if (context.mounted && !dialogClosed) {
+                  setState(() => isSubmitting = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('导入酷狗凭证'),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('请粘贴可用于酷狗 API 服务的 Bearer Token 或凭证字符串。'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: tokenController,
+                      minLines: 5,
+                      maxLines: 8,
+                      decoration: const InputDecoration(
+                        hintText: '例如：eyJhbGciOi... 或服务要求的完整凭证',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting ? null : submitToken,
+                  child: Text(isSubmitting ? '导入中' : '确认导入'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    tokenController.dispose();
+  }
+
   String _displayError(Object error, String fallback) {
     final text = error.toString();
     if (text.startsWith('Exception: ')) {
@@ -919,6 +1440,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _showAuthHintDialog({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SelectableText(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _formatDate(DateTime date) {

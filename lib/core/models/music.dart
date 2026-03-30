@@ -1,4 +1,7 @@
 /// 音乐数据模型，对应后端 Music
+import '../network/image_url.dart';
+
+/// 音乐数据模型，对应后端 Music
 class Music {
   final String id;
   final String name;
@@ -38,13 +41,14 @@ class Music {
       duration: json['duration'] as int?,
       url: json['url'] as String?,
       lyric: json['lyric'] as String?,
-      pictureUrl: json['pictureUrl'] as String?,
+      pictureUrl: toProxiedImageUrl(json['pictureUrl'] as String?),
       source: json['source'] as String? ?? 'wy',
       quality: json['quality'] as String?,
       pickTime: json['pickTime'] as int?,
       pushTime: json['pushTime'] as int?,
       pickedBy: json['pickedBy'] as String?,
-      likedUserIds: (json['likedUserIds'] as List<dynamic>?)
+      likedUserIds:
+          (json['likedUserIds'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],

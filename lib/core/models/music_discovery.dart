@@ -1,3 +1,5 @@
+import '../network/image_url.dart';
+
 class MusicDiscoveryContext {
   final bool canViewHostPlaylists;
   final String playlistSource;
@@ -40,7 +42,7 @@ class MusicPlaylistSummary {
     return MusicPlaylistSummary(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '未命名歌单',
-      coverUrl: json['coverUrl'] as String?,
+      coverUrl: toProxiedImageUrl(json['coverUrl'] as String?),
       creatorName: json['creatorName'] as String?,
       trackCount: json['trackCount'] as int?,
       playCount: json['playCount'] as int?,
@@ -71,7 +73,7 @@ class MusicToplistSummary {
     return MusicToplistSummary(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '未命名榜单',
-      coverUrl: json['coverUrl'] as String?,
+      coverUrl: toProxiedImageUrl(json['coverUrl'] as String?),
       description: json['description'] as String?,
       updateFrequency: json['updateFrequency'] as String?,
       source: json['source'] as String? ?? 'wy',

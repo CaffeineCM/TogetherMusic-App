@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/room_provider.dart';
@@ -9,6 +10,7 @@ import '../widgets/online_users_panel.dart';
 import '../widgets/pick_panel.dart';
 import '../widgets/player_widget.dart';
 import '../widgets/queue_panel.dart';
+import '../widgets/room_settings_dialog.dart';
 
 /// 房间主页面
 /// 包含播放器、点歌面板、聊天面板、在线用户列表
@@ -91,6 +93,13 @@ class _RoomPageState extends ConsumerState<RoomPage> {
           },
         ),
         actions: [
+          // 房间设置（仅房主/管理员可见）
+          if (roomState.currentRoom?.isManager ?? false)
+            IconButton(
+              icon: const Icon(Icons.tune_rounded),
+              tooltip: '房间设置',
+              onPressed: () => _openSettingsDialog(context),
+            ),
           IconButton(
             icon: const Icon(Icons.queue_music_rounded),
             tooltip: '点歌',
@@ -279,8 +288,7 @@ class _RoomPageState extends ConsumerState<RoomPage> {
     }
   }
 
-  Future<void> _openPickDialog(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
+  Future<void> _openPickDialog(BuildContext context) {    final mediaQuery = MediaQuery.of(context);
     final width = mediaQuery.size.width;
     final height = mediaQuery.size.height;
     final dialogWidth = width > 1100 ? 980.0 : width - 32;
@@ -290,66 +298,185 @@ class _RoomPageState extends ConsumerState<RoomPage> {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          backgroundColor: Colors.transparent,
-          child: Container(
-            width: dialogWidth,
-            height: dialogHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF2D2B35),
-                  Color(0xFF3C3946),
-                  Color(0xFF25232C),
-                ],
-              ),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 24,
-                  offset: Offset(0, 16),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.queue_music_rounded),
-                      const SizedBox(width: 10),
-                      Text(
-                        '点歌台',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(8, 4, 8, 8),
-                    child: PickPanel(),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _PickDialog(
+          dialogWidth: dialogWidth,
+          dialogHeight: dialogHeight,
         );
       },
+    );
+  }
+
+  void _openSettingsDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => const RoomSettingsDialog(),
+    );
+  }
+}
+
+class _PickDialog extends StatefulWidget {
+  final double dialogWidth;
+  final double dialogHeight;
+
+  const _PickDialog({required this.dialogWidth, required this.dialogHeight});
+
+  @override
+  State<_PickDialog> createState() => _PickDialogState();
+}
+
+class _PickDialogState extends State<_PickDialog> {
+  String _selectedSource = 'wy';
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: widget.dialogWidth,
+        height: widget.dialogHeight,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF2D2B35), Color(0xFF3C3946), Color(0xFF25232C)],
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 24,
+              offset: Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.queue_music_rounded),
+                  const SizedBox(width: 10),
+                  Text(
+                    '点歌台',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  _SourceSegmentedControl(
+                    selectedSource: _selectedSource,
+                    onChanged: (value) {
+                      setState(() => _selectedSource = value);
+                    },
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                child: PickPanel(selectedSource: _selectedSource),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceSegmentedControl extends StatelessWidget {
+  final String selectedSource;
+  final ValueChanged<String> onChanged;
+
+  const _SourceSegmentedControl({
+    required this.selectedSource,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final options = AppConstants.musicSources
+        .where(
+          (item) =>
+              item['code'] == 'wy' ||
+              item['code'] == 'qq' ||
+              item['code'] == 'kg',
+        )
+        .toList();
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final item in options)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: _SourceChip(
+                label: item['name'] ?? item['code']!,
+                selected: item['code'] == selectedSource,
+                onTap: () => onChanged(item['code']!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SourceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.24)
+              : Colors.transparent,
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface.withValues(alpha: 0.86),
+          ),
+        ),
+      ),
     );
   }
 }

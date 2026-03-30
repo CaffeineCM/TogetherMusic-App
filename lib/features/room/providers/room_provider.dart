@@ -20,6 +20,7 @@ class RoomState {
   final bool isLoading;
   final String? error;
   final bool isConnected;
+  final RoomTokenStatus? tokenStatus;
 
   const RoomState({
     this.roomList = const [],
@@ -33,6 +34,7 @@ class RoomState {
     this.isLoading = false,
     this.error,
     this.isConnected = false,
+    this.tokenStatus,
   });
 
   RoomState copyWith({
@@ -47,6 +49,7 @@ class RoomState {
     bool? isLoading,
     String? error,
     bool? isConnected,
+    Object? tokenStatus = _tokenStatusUnchanged,
   }) {
     return RoomState(
       roomList: roomList ?? this.roomList,
@@ -66,6 +69,9 @@ class RoomState {
       isLoading: isLoading ?? this.isLoading,
       error: error,
       isConnected: isConnected ?? this.isConnected,
+      tokenStatus: identical(tokenStatus, _tokenStatusUnchanged)
+          ? this.tokenStatus
+          : tokenStatus as RoomTokenStatus?,
     );
   }
 
@@ -82,6 +88,7 @@ class RoomState {
 const Object _roomUnchanged = Object();
 const Object _musicUnchanged = Object();
 const Object _playbackUnchanged = Object();
+const Object _tokenStatusUnchanged = Object();
 
 /// 房间状态 Notifier
 class RoomNotifier extends StateNotifier<RoomState> {
@@ -234,7 +241,15 @@ class RoomNotifier extends StateNotifier<RoomState> {
           onlineUsers: [],
           feedItems: [],
           error: kickMessage,
+          tokenStatus: null,
         );
+        break;
+
+      case MessageType.tokenStatus:
+        final tokenStatus = message.tokenStatusData;
+        if (tokenStatus != null) {
+          state = state.copyWith(tokenStatus: tokenStatus);
+        }
         break;
 
       case MessageType.chat:
@@ -347,6 +362,8 @@ class RoomNotifier extends StateNotifier<RoomState> {
 
     // 获取房间用户列表
     stompService.getRoomUsers();
+    // 拉取 Token 授权状态
+    stompService.getTokenStatus();
     unawaited(_syncCurrentPlaying(room.id));
     unawaited(_syncPlaybackSnapshot(room.id));
   }
@@ -364,6 +381,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
       onlineUsers: [],
       blacklistedUsers: [],
       feedItems: [],
+      tokenStatus: null,
     );
   }
 
@@ -596,6 +614,34 @@ class RoomNotifier extends StateNotifier<RoomState> {
   /// 清除错误
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  /// 获取房间 Token 授权状态
+  void fetchTokenStatus() {
+    if (!state.isInRoom) return;
+    stompService.getTokenStatus();
+  }
+
+  /// 房主取消指定源授权
+  void unlinkToken({required String source}) {
+    if (!state.isInRoom) return;
+    stompService.unlinkToken(source: source);
+  }
+
+  /// 设置房间音乐授权（房主/管理员）
+  void setRoomMusicSource({
+    String? source,
+    bool useMyAccount = false,
+    int? targetUserId,
+  }) {
+    final houseId = state.currentHouseId;
+    if (houseId == null) return;
+    stompService.setMusicSource(
+      houseId: houseId,
+      source: source,
+      useMyAccount: useMyAccount,
+      targetUserId: targetUserId,
+    );
   }
 
   @override
