@@ -252,6 +252,17 @@ class StompService {
     );
   }
 
+  void pickPlaylist({required String playlistId, String source = 'wy'}) {
+    if (playlistId.isEmpty) {
+      return;
+    }
+
+    send(
+      '/music/pickPlaylist',
+      body: {'playlistId': playlistId, 'source': source},
+    );
+  }
+
   /// 发送聊天消息
   void sendChat(String content) {
     send('/chat/send', body: {'content': content});

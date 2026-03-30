@@ -416,6 +416,19 @@ class RoomNotifier extends StateNotifier<RoomState> {
     );
   }
 
+  void pickPlaylist({required String playlistId, String source = 'wy'}) {
+    if (!state.isInRoom) {
+      state = state.copyWith(error: '请先进入房间');
+      return;
+    }
+    if (playlistId.isEmpty) {
+      state = state.copyWith(error: '歌单信息无效');
+      return;
+    }
+
+    stompService.pickPlaylist(playlistId: playlistId, source: source);
+  }
+
   /// 发送聊天消息
   void sendChat(String content) {
     if (!state.isInRoom) {
